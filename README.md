@@ -31,7 +31,7 @@ Change the values inside ```$Defaults [PSCustomObject]@``` to match your AD setu
 ## 5. Run the script
 In the terminal run:
 ```bash
-.\createUsers.ps1
+.\createUsersAD.ps1
 ```
 The script will attempt to create all users listed in its input.
 
