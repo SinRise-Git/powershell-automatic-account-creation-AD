@@ -21,7 +21,7 @@ git clone https://github.com/SinRise-Git/powershell-automatic-account-creation-A
 cd powershell-automatic-account-creation-ad
 ```
 
-## 3. Add users to text list 
+## 3. Add users to userlist.txt 
 Add as many users as you want to ```userlist.txt```. If you want to set specific values for a user, define them like this: <br>**USER:Department=VALUE:Description=VALUE**<br>
 Any value inside ```$userData``` can be changed in this manner. 
 
