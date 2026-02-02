@@ -27,7 +27,6 @@ $email = {
         "$($names[0]).$($names[-1])@$($Defaults.Domain)"
     }
 }
-
 $logonName = {
     param (
         [string]$FullName
@@ -65,8 +64,8 @@ $users = Get-Content "userlist.txt" | ForEach-Object {
         Department            = $Defaults.Department
     }
     
-    if ($parts.Count -gt 2) {
-        foreach ($item in $parts[2..($parts.Count - 1)]) {
+    if ($parts.Count -gt 1) {
+        foreach ($item in $parts[1..($parts.Count - 1)]) {
             if ($item -match "=") {
                 $key, $value = $item -split "=", 2
 
@@ -84,11 +83,7 @@ $users = Get-Content "userlist.txt" | ForEach-Object {
 }
 
 Write-Host "`nUsers that will be created:" -ForegroundColor Cyan
-
-$users |
-Select-Object Name, FullName, Email, OU, Department, Enabled |
-Format-Table -AutoSize
-
+$users | Select-Object Name, FullName, Email, OU, Department, Enabled | Format-Table -AutoSize
 $confirm = Read-Host "`nDo you want to create these users? (y/n)"
 
 if ($confirm -notin @('y','Y')) {
