@@ -4,7 +4,7 @@ $fullDomain = "Example.com"
 $splitDomain = $FullDomain -split "\."
 
 $Defaults = [PSCustomObject]@{
-    OU                    = "OU=Example,DC=$($SplitDomain[0]),DC=$($SplitDomain[1])"
+    OU                    = "OU=Brukere,DC=$($SplitDomain[0]),DC=$($SplitDomain[1])"
     Domain                = $fullDomain
     Enabled               = $true
     ChangePasswordAtLogon = $true
@@ -49,7 +49,10 @@ $logonName = {
 } 
 
 $users = Get-Content "userlist.txt" | ForEach-Object {
-    $fullname = $_.TrimEnd()
+    $line = $_.Trim()
+    $parts = $line -split ":"
+    
+    $fullname = $parts[0]
 
     $userData = [ordered]@{
         Name                  = & $logonName $fullname
