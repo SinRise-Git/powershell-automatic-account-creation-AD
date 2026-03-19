@@ -113,8 +113,6 @@ foreach ($user in $users) {
         Write-Host "User $($user.Name) already exists - skipping" -ForegroundColor Yellow
         continue
     }
-    Write-Host $dcPath
-    Write-Host $user.OU
 
     try {
         New-ADUser `
@@ -131,7 +129,7 @@ foreach ($user in $users) {
             -Description $user.Description `
             -Department $user.Department
 
-        Write-Host "Created user: $($user.FullName)" -ForegroundColor Green
+        Write-Host "Created user: $($user.FullName) in OU: $($user.OU)" -ForegroundColor Green
 
         if ($user.Groups -and $user.Groups.Count -gt 0) {
             foreach ($group in $user.Groups) {
