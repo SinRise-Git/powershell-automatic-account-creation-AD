@@ -1,10 +1,10 @@
 Import-Module ActiveDirectory
 
-$fullDomain = "Example.com"
-$splitDomain = $FullDomain -split "\."
+$fullDomain = "Exampel.com"
+$dcPath = ( ($fullDomain -split "\.") | ForEach-Object { "DC=$_" } ) -join ","
 
 $Defaults = [PSCustomObject]@{
-    OU                    = "OU=Brukere,DC=$($SplitDomain[0]),DC=$($SplitDomain[1])"
+    OU                    = "OU=Exampel,$($dcPath)"
     Domain                = $fullDomain
     Enabled               = $true
     ChangePasswordAtLogon = $true
@@ -36,10 +36,10 @@ $logonName = {
 
     if ($parts.Count -ge 2) {
         $first = $parts[0]
-        $last  = $parts[-1]
+        $last = $parts[-1]
 
         $firstPart = $first.Substring(0, [Math]::Min(3, $first.Length))
-        $lastPart  = $last.Substring(0, [Math]::Min(3, $last.Length))
+        $lastPart = $last.Substring(0, [Math]::Min(3, $last.Length))
 
         return ($firstPart + $lastPart).ToLower()
     }
@@ -51,6 +51,7 @@ $logonName = {
 $users = Get-Content "userlist.txt" | ForEach-Object {
     $line = $_.Trim()
     $parts = $line -split ":"
+    
     
     $fullname = $parts[0]
 
@@ -65,18 +66,31 @@ $users = Get-Content "userlist.txt" | ForEach-Object {
         Password              = $securePassword
         Description           = $Defaults.Description
         Department            = $Defaults.Department
+        Groups                = @()
     }
     
     if ($parts.Count -gt 1) {
         foreach ($item in $parts[1..($parts.Count - 1)]) {
             if ($item -match "=") {
                 $key, $value = $item -split "=", 2
+                $key = $key.Trim()
+                $value = $value.Trim()
+
+                if ($key -eq "OU") {
+                    $ouParts = $value -split "/"
+                    $ouPath = ($ouParts | ForEach-Object { "OU=$_" }) -join ","
+                    $value = "$ouPath,$dcPath"
+                }
+
+                elseif ($key -eq "Groups") {
+                    $value = $value -split "," | ForEach-Object { $_.Trim() }
+                }
+
+                elseif ($userData.Contains($key) -and $userData[$key] -is [bool]) {
+                    $value = [bool]::Parse($value)
+                }
 
                 if ($userData.Contains($key)) {
-                    if ($userData[$key] -is [bool]) {
-                        $value = [bool]::Parse($value)
-                    }
-
                     $userData[$key] = $value
                 }
             }
@@ -89,7 +103,7 @@ Write-Host "`nUsers that will be created:" -ForegroundColor Cyan
 $users | Select-Object Name, FullName, Email, OU, Department, Enabled | Format-Table -AutoSize
 $confirm = Read-Host "`nDo you want to create these users? (y/n)"
 
-if ($confirm -notin @('y','Y')) {
+if ($confirm -notin @('y', 'Y')) {
     Write-Host "Operation cancelled." -ForegroundColor Yellow
     return
 }
@@ -99,6 +113,8 @@ foreach ($user in $users) {
         Write-Host "User $($user.Name) already exists - skipping" -ForegroundColor Yellow
         continue
     }
+    Write-Host $dcPath
+    Write-Host $user.OU
 
     try {
         New-ADUser `
@@ -117,7 +133,20 @@ foreach ($user in $users) {
 
         Write-Host "Created user: $($user.FullName)" -ForegroundColor Green
 
-    } catch {
+        if ($user.Groups -and $user.Groups.Count -gt 0) {
+            foreach ($group in $user.Groups) {
+                try {
+                    Add-ADGroupMember -Identity $group -Members $user.Name
+                    Write-Host "  Added to group: $group" -ForegroundColor Cyan
+                }
+                catch {
+                    Write-Host "  Failed to add to group $group : $_" -ForegroundColor Red
+                }
+            }
+        }
+
+    }
+    catch {
         Write-Host "Failed to create user $($user.FullName): $_" -ForegroundColor Red
     }
 }
