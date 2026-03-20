@@ -6,7 +6,7 @@ A script that reads users from a text file, applies optional custom attributes, 
 
 - Fetches users from a text list.
 - Allows custom values for each user:  
-**USER:Department=VALUE:Description=VALUE**
+**ACCOUNT_NAME:Department=VALUE:Description=VALUE:OU=VALUE/VALUE:Groups=VALUE, VALUE**
 - Creates a custom email address and logon name for each user.
 - Displays all users before creation and skips duplicate users.
 - Creates an AD user for each entry, when no errors are detected.
