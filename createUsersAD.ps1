@@ -1,16 +1,19 @@
 Import-Module ActiveDirectory
 
-$fullDomain = "Exampel.com"
+$fullDomain = "Example.com"
 $dcPath = ( ($fullDomain -split "\.") | ForEach-Object { "DC=$_" } ) -join ","
 
 $Defaults = [PSCustomObject]@{
-    OU                    = "OU=Exampel,$($dcPath)"
+    OU                    = "OU=Example,$($dcPath)"
     Domain                = $fullDomain
     Enabled               = $true
     ChangePasswordAtLogon = $true
+    Password              = "ExamplePassword123!"
     Description           = "Account for $fullDomain"
     Department            = "Example Department"
 }
+
+$securePassword = ConvertTo-SecureString $Defaults.Password -AsPlainText -Force
 
 $email = {
     param(
@@ -25,13 +28,13 @@ $email = {
         "$($names[0]).$($names[-1])@$($Defaults.Domain)"
     }
 }
-$createLogonName = {
+
+$logonName = {
     param (
         [string]$FullName
     )
 
-    $normalized = $FullName ` -replace '[æÆ]','ae' ` -replace '[øØ]','o' ` -replace '[åÅ]','a'
-    $parts = $normalized -split '\s+'
+    $parts = $FullName -split '\s+'
 
     if ($parts.Count -ge 2) {
         $first = $parts[0]
@@ -42,22 +45,75 @@ $createLogonName = {
 
         return ($firstPart + $lastPart).ToLower()
     }
-    else { 
-        return $normalized.ToLower()
+    else {
+        return $FullName.ToLower()
     }
 } 
+
+function OUExists {
+    param (
+        [string]$UserOuPath
+    )
+
+    $parts = $UserOuPath -split ","
+
+    $ouParts = $parts | Where-Object { $_ -like "OU=*" }
+    $dcParts = $parts | Where-Object { $_ -like "DC=*" }
+
+    [array]::Reverse($ouParts)
+
+    $currentPath = ($dcParts -join ",")
+
+    foreach ($ou in $ouParts) {
+        $ouName = $ou -replace "^OU=", ""
+        $targetDN = "OU=$ouName,$currentPath"
+
+        $exists = Get-ADOrganizationalUnit `
+            -LDAPFilter "(distinguishedName=$targetDN)" `
+            -ErrorAction SilentlyContinue
+
+        if (-not $exists) {
+            Write-Host "Creating OU: $targetDN" -ForegroundColor Magenta
+
+            New-ADOrganizationalUnit `
+                -Name $ouName `
+                -Path $currentPath `
+                -ProtectedFromAccidentalDeletion $false
+        }
+
+        $currentPath = $targetDN
+    }
+}
+
+function GroupsExists {
+    param (
+        [string]$GroupName
+    )
+
+
+    $exists = Get-ADGroup -Filter "Name -eq '$GroupName'" -ErrorAction SilentlyContinue
+
+    if (-not $exists) {
+       Write-Host "Creating group: $GroupName" -ForegroundColor Magenta
+
+       New-ADGroup `
+           -Name $GroupName `
+           -GroupScope Global `
+           -GroupCategory Security
+ 
+    }
+}
+
 
 $users = Get-Content "userlist.txt" | ForEach-Object {
     $line = $_.Trim()
     $parts = $line -split ":"
     
-    $fullname = $parts[0]
-    $logonName = & $createLogonName $fullname
     
-    $securePassword = ConvertTo-SecureString "${logonName}1234#@" -AsPlainText -Force
+    $fullname = $parts[0]
 
     $userData = [ordered]@{
-        Name                  = $loginName
+        Name                  = & $logonName $fullname
         FullName              = $fullname
         Email                 = & $email $fullname
         OU                    = $Defaults.OU
@@ -68,7 +124,6 @@ $users = Get-Content "userlist.txt" | ForEach-Object {
         Description           = $Defaults.Description
         Department            = $Defaults.Department
         Groups                = @()
-        Error                 = $null
     }
     
     if ($parts.Count -gt 1) {
@@ -102,7 +157,7 @@ $users = Get-Content "userlist.txt" | ForEach-Object {
 }
 
 Write-Host "`nUsers that will be created:" -ForegroundColor Cyan
-$users | Select-Object Name, FullName, Email, OU, Department | Format-Table -AutoSize
+$users | Select-Object Name, FullName, Email, OU, Department, Enabled | Format-Table -AutoSize
 $confirm = Read-Host "`nDo you want to create these users? (y/n)"
 
 if ($confirm -notin @('y', 'Y')) {
@@ -113,8 +168,16 @@ if ($confirm -notin @('y', 'Y')) {
 foreach ($user in $users) {
     if (Get-ADUser -Filter "SamAccountName -eq '$($user.Name)'" -ErrorAction SilentlyContinue) {
         Write-Host "User $($user.Name) already exists - skipping" -ForegroundColor Yellow
-        $user.Error = "User already exists"
         continue
+    }
+    
+    OUExists -UserOuPath $user.OU
+
+    if ($user.Groups -and $user.Groups.Count -gt 0) {
+
+        foreach ($group in $user.Groups) {
+            GroupsExists -GroupName $group
+        }
     }
 
     try {
@@ -132,7 +195,11 @@ foreach ($user in $users) {
             -Description $user.Description `
             -Department $user.Department
 
-        Write-Host "Created user: $($user.FullName) in OU: $($user.OU)" -ForegroundColor Green
+        $parts = $user.OU -split ","
+        $ouParts = $parts | Where-Object { $_ -like "OU=*" }
+
+
+        Write-Host "Created user $($user.FullName) in $($ouParts)" -ForegroundColor Green
 
         if ($user.Groups -and $user.Groups.Count -gt 0) {
             foreach ($group in $user.Groups) {
@@ -149,6 +216,5 @@ foreach ($user in $users) {
     }
     catch {
         Write-Host "Failed to create user $($user.FullName): $_" -ForegroundColor Red
-        $user.Error = $_.ToString()
     }
 }
